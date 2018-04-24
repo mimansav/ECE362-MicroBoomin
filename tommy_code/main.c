@@ -52,6 +52,7 @@ DAC_HandleTypeDef hdac1;
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim14;
 
 /* USER CODE BEGIN PV */
@@ -99,7 +100,7 @@ int outputting_audio = 0; //flag to indicate to ISR that audio is currently bein
 int audio_idx = 0; //current position in audio output array
 extern uint8_t sound1[], sound2[], sound3[], sound4[], sound5[], sound6[];
 int dac_value = 0;
-int lengths[] = {2575, 1091, 2048, 4929, 3558, 5858};
+int lengths[] = {5288, 9911, 3233, 9623, 11910, 6821};//{2821, 4926, 5006, 5743, 7485, 3828};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -109,6 +110,10 @@ static void MX_TIM2_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_DAC1_Init(void);
 static void MX_TIM14_Init(void);
+static void MX_TIM3_Init(void);
+
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+                                
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -193,31 +198,43 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 					case 0:
 						if (audio_idx < lengths[0]) {
 							dac_value += sound1[audio_idx] * 4;
+						} else { //TODO
+							outputting_audio = 0;
 						}
 						break;
 					case 1:
 						if (audio_idx < lengths[1]) {
 							dac_value += sound2[audio_idx] * 4;
+						} else {
+							outputting_audio = 0;
 						}
 						break;
 					case 2:
 						if (audio_idx < lengths[2]) {
 							dac_value += sound3[audio_idx] * 4;
+						} else {
+							outputting_audio = 0;
 						}
 						break;
 					case 3:
 						if (audio_idx < lengths[3]) {
 							dac_value += sound4[audio_idx] * 4;
+						} else {
+							outputting_audio = 0;
 						}
 						break;
 					case 4:
 						if (audio_idx < lengths[4]) {
 							dac_value += sound5[audio_idx] * 4;
+						} else {
+							outputting_audio = 0;
 						}
 						break;
 					case 5:
 						if (audio_idx < lengths[5]) {
 							dac_value += sound6[audio_idx] * 4;
+						} else {
+							outputting_audio = 0;
 						}
 						break;
 					}
@@ -225,6 +242,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			}
 			HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, dac_value);
 			audio_idx++;
+		} else {
+			HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 0);
 		}
 	}
 }
@@ -263,6 +282,7 @@ int main(void)
   MX_SPI1_Init();
   MX_DAC1_Init();
   MX_TIM14_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_Base_Start_IT(&htim14);
@@ -644,12 +664,67 @@ static void MX_TIM2_Init(void)
 
 }
 
+/* TIM3 init function */
+static void MX_TIM3_Init(void)
+{
+
+  TIM_ClockConfigTypeDef sClockSourceConfig;
+  TIM_MasterConfigTypeDef sMasterConfig;
+  TIM_OC_InitTypeDef sConfigOC;
+
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 0;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  if (HAL_TIM_OC_Init(&htim3) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  HAL_TIM_MspPostInit(&htim3);
+
+}
+
 /* TIM14 init function */
 static void MX_TIM14_Init(void)
 {
 
   htim14.Instance = TIM14;
-  htim14.Init.Prescaler = 1091;
+  htim14.Init.Prescaler = 546;
   htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim14.Init.Period = 1;
   htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
