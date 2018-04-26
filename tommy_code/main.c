@@ -64,7 +64,7 @@ int button_data[6][16];
 int disp_data[16];
 int cursor_data[16];
 int read;
-int tempo = 100;//beats per minute
+int tempo = 160;//beats per minute
 int count;
 int target;
 int next_beat = 0;
@@ -100,7 +100,7 @@ int outputting_audio = 0; //flag to indicate to ISR that audio is currently bein
 int audio_idx = 0; //current position in audio output array
 extern uint8_t sound1[], sound2[], sound3[], sound4[], sound5[], sound6[];
 int dac_value = 0;
-int lengths[] = {5288, 9911, 3233, 9623, 11910, 6821};//{2821, 4926, 5006, 5743, 7485, 3828};
+int lengths[] = {10000, 1548, 10000, 10000, 9393, 4321};//{2821, 4926, 5006, 5743, 7485, 3828};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -176,7 +176,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		if(!pause)
 		{
 			count++;
-			if(count == target)
+			if(count >= target)
 			{
 				count = 0;
 				next_beat = 1;
@@ -186,6 +186,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		sample_audio = 1;
 		if (outputting_audio) { //Changed
 			dac_value = 0; //TODO - default output 85?
+			int how_many_off = 0;
 			for (int i = 0; i < 6; i++) {
 				int current;
 				if (cursor_pos == beat_num) {
@@ -199,50 +200,55 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 						if (audio_idx < lengths[0]) {
 							dac_value += sound1[audio_idx] * 4;
 						} else { //TODO
-							outputting_audio = 0;
+							how_many_off++;
 						}
 						break;
 					case 1:
 						if (audio_idx < lengths[1]) {
 							dac_value += sound2[audio_idx] * 4;
 						} else {
-							outputting_audio = 0;
+							how_many_off++;
 						}
 						break;
 					case 2:
 						if (audio_idx < lengths[2]) {
 							dac_value += sound3[audio_idx] * 4;
 						} else {
-							outputting_audio = 0;
+							how_many_off++;
 						}
 						break;
 					case 3:
 						if (audio_idx < lengths[3]) {
 							dac_value += sound4[audio_idx] * 4;
 						} else {
-							outputting_audio = 0;
+							how_many_off++;
 						}
 						break;
 					case 4:
 						if (audio_idx < lengths[4]) {
 							dac_value += sound5[audio_idx] * 4;
 						} else {
-							outputting_audio = 0;
+							how_many_off++;
 						}
 						break;
 					case 5:
 						if (audio_idx < lengths[5]) {
 							dac_value += sound6[audio_idx] * 4;
 						} else {
-							outputting_audio = 0;
+							how_many_off++;
 						}
 						break;
 					}
 				}
 			}
-			HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, dac_value);
-			audio_idx++;
+			if (how_many_off == 6) { //TODO
+				outputting_audio = 0;
+			} else {
+				HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, dac_value);
+				audio_idx++;
+			}
 		} else {
+			dac_value = 0;
 			HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 0);
 		}
 	}
@@ -286,8 +292,10 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_Base_Start_IT(&htim14);
+  HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
   HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
-  target = 1000 / (2 * tempo) * 60;
   /*HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET);//make sure ldbar is high
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);//make sure srclear bar is high
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);//make sure ser is low, timing diagram said this was correct
@@ -312,6 +320,16 @@ int main(void)
   }
 
 
+	TIM3->ARR = 0x00001000; // Set ARR = 99, as timer clock is 1MHz the period is 100 us
+	TIM3->CCR1 = 0;		// Set CCRx = 4, , the signal will be high during 4 us
+	TIM3->CCR2 = 0;
+	TIM3->CCR3 = 0;
+	TIM3->CCMR1 |= TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1PE | TIM_CCMR1_OC2M_2 | TIM_CCMR1_OC2M_1 | TIM_CCMR1_OC2PE;
+	TIM3->CCMR2 |= TIM_CCMR2_OC3M_2 | TIM_CCMR2_OC3M_1 | TIM_CCMR2_OC3PE;
+	TIM3->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E; //Select active high polarity on OC1 (CC1P = 0, reset value), enable the output on OC1 (CC1E = 1)
+	TIM3->BDTR |= TIM_BDTR_MOE; // Enable output (MOE = 1)
+
+	TIM3->CR1 |= TIM_CR1_CEN;
 
   /* USER CODE END 2 */
 
@@ -324,24 +342,24 @@ int main(void)
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
-	  target = 1000 / (2 * tempo) * 60;
+	  target = 30000 / (tempo);//1000 / (2*tempo) * 60;
 	  cursorReturn();
 	  displayString("Sound: ");
 	  if(state == 1)
 	  {
-		  displayString("Tom");
+		  displayString("Cowbell");
 	  }
 	  else if(state == 2)
 	  {
-		  displayString("Snare");
+		  displayString("Claves");
 	  }
 	  else if(state == 3)
 	  {
-		  displayString("Bass");
+		  displayString("Clap");
 	  }
 	  else if(state == 4)
 	  {
-		  displayString("Kick");
+		  displayString("Conga");
 	  }
 	  else if(state == 5)
 	  {
@@ -349,7 +367,7 @@ int main(void)
 	  }
 	  else if(state == 6)
 	  {
-		  displayString("Clap");
+		  displayString("Snare");
 	  }
 	  displayString("   ");
 	  setCursor(0x40);
@@ -464,15 +482,25 @@ int main(void)
 		  }
 		  audio_idx = 0; //restart audio - Changed, minimally
 	  }
+	  if(dac_value != 0)
+	  {
+		  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, dac_value);
+		  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, dac_value);
+	  }
+	  else
+	  {
+		  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+		  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
+	  }
 	  if(up)
 	  {
 		  up = 0;
-		  tempo++;
+		  tempo+=4;
 	  }
 	  if(down)
 	  {
 		  down = 0;
-		  tempo--;
+		  tempo-=4;
 	  }
 	  if(right)
 	  {
@@ -673,9 +701,9 @@ static void MX_TIM3_Init(void)
   TIM_OC_InitTypeDef sConfigOC;
 
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
+  htim3.Init.Prescaler = 7;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 0;
+  htim3.Init.Period = 99;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -724,7 +752,7 @@ static void MX_TIM14_Init(void)
 {
 
   htim14.Instance = TIM14;
-  htim14.Init.Prescaler = 546;
+  htim14.Init.Prescaler = 544/2;
   htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim14.Init.Period = 1;
   htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
